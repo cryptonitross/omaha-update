@@ -44,11 +44,14 @@ JUROJIN_POSITION_REGIONS = {
     6: {'x': 555, 'y': 330, 'w': 70, 'h': 70},  # bottom right (step 5)
 }
 
-# Confirmed clockwise step distance from hero (seat 1) to each seat
-# Derived empirically from known game states: seat4=BB when hero=BTN, seat6=CO when hero=BTN
+# Clockwise step distance from hero (seat 1) to each seat.
+# Seat 1 step=0: hero's own badge directly names hero position (included in voting).
+# Seats 2-6: derived empirically from known game states.
+# NOTE: seat4 and seat2 may give false-positive votes; seat1+seat3+seat6 are most reliable.
 SEAT_STEP_MAP = {
+    1: 0,  # hero: badge at seat 1 = hero position (direct vote, step=0)
     3: 1,  # left-bottom: 1 step clockwise from hero
-    4: 2,  # top-center:  2 steps
+    4: 2,  # top-center:  2 steps (may give false votes — outweighed by others)
     2: 3,  # left-top:    3 steps
     5: 4,  # top-right:   4 steps
     6: 5,  # bottom-right: 5 steps
@@ -131,7 +134,8 @@ class DetectUtils:
                             hero_idx = (badge_idx - step) % 6
                             implied_hero = SEAT_POSITION_CYCLE[hero_idx]
                             votes[implied_hero].append((best.match_score, seat, best.name))
-                            logger.info(f"        Seat {seat}: {best.name} (score={best.match_score:.3f}) → vote {implied_hero}")
+                            label = "DIRECT" if seat == 1 else f"seat{seat}"
+                            logger.info(f"        [{label}] {best.name} (score={best.match_score:.3f}) → vote {implied_hero}")
                         else:
                             logger.info(f"        Seat {seat}: NO match")
                     else:
