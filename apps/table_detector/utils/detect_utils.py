@@ -38,12 +38,12 @@ PLAYER_POSITIONS = {
 # NOTE: seat 2 = left-top, seat 3 = left-bottom (matches original working code)
 # Seat 1 (hero) region is wide to ensure we catch the badge wherever it appears
 JUROJIN_POSITION_REGIONS = {
-    1: {'x': 180, 'y': 300, 'w': 220, 'h': 180},  # hero bottom center — WIDE region
-    2: {'x': 15,  'y': 150, 'w': 70,  'h': 70},   # left top
-    3: {'x': 15,  'y': 310, 'w': 70,  'h': 70},   # left bottom
-    4: {'x': 275, 'y': 100, 'w': 65,  'h': 65},   # top center
-    5: {'x': 540, 'y': 145, 'w': 65,  'h': 65},   # top right
-    6: {'x': 555, 'y': 330, 'w': 70,  'h': 70},   # bottom right
+    1: {'x': 280, 'y': 355, 'w': 65, 'h': 65},  # hero bottom center (badge at ~308,405)
+    2: {'x': 15,  'y': 150, 'w': 70, 'h': 70},  # left top
+    3: {'x': 15,  'y': 310, 'w': 70, 'h': 70},  # left bottom
+    4: {'x': 275, 'y': 100, 'w': 65, 'h': 65},  # top center
+    5: {'x': 540, 'y': 145, 'w': 65, 'h': 65},  # top right
+    6: {'x': 555, 'y': 330, 'w': 70, 'h': 70},  # bottom right
 }
 
 POSITION_MARGIN = 10
@@ -144,13 +144,27 @@ class DetectUtils:
                 logger.info(f"    ⚠️ Jurojin: only {real_count} positions detected, skipping")
                 return None
 
-            # Validate: no duplicates (duplicates = overlay absent / false matches)
+            # Handle duplicates: keep best-scored match per position name, discard others
             names = [d.name for _, d in real]
             counts = Counter(names)
             dupes = {n: c for n, c in counts.items() if c > 1}
             if dupes:
-                logger.warning(f"    ⚠️ Jurojin: duplicate positions {dupes} — overlay likely absent")
-                return None
+                logger.warning(f"    ⚠️ Jurojin: duplicate positions {dupes} — keeping best score per position")
+                # For each duplicated position, zero out lower-score copies
+                seen_pos = {}
+                for seat, det in list(player_positions.items()):
+                    if det.name in dupes:
+                        if det.name not in seen_pos or det.match_score > seen_pos[det.name][1]:
+                            if det.name in seen_pos:
+                                # Demote previous best to NO
+                                prev_seat = seen_pos[det.name][0]
+                                player_positions[prev_seat] = Detection("NO", None, (0,0,0,0), 0)
+                            seen_pos[det.name] = (seat, det.match_score)
+                        else:
+                            player_positions[seat] = Detection("NO", None, (0,0,0,0), 0)
+                # Recount after dedup
+                real = [(s, d) for s, d in player_positions.items() if d.name in VALID_POSITIONS]
+                real_count = len(real)
 
             # If hero position not found directly, deduce from other seats
             if player_positions[1].name == "NO":
