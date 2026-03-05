@@ -45,16 +45,14 @@ JUROJIN_POSITION_REGIONS = {
 }
 
 # Clockwise step distance from hero (seat 1) to each seat.
-# Reliability (empirically tested):
-#   seat6 = MOST RELIABLE (correct for BTN, CO, BB)
-#   seat1 = reliable for SB, CO; false positive MP when hero=BTN, false SB when hero=BB
-#   seat4 = REMOVED — always gives false positives with score ~1.000
-#   seat3, seat2, seat5 = low reliability, excluded from primary voting
+# seat4 EXCLUDED — always gives false positives with score ~1.000
+# seat5 INCLUDED — essential for detecting MP position (votes correctly for MP)
 SEAT_STEP_MAP = {
-    6: 5,  # bottom-right: MOST RELIABLE — 5 steps clockwise from hero
-    1: 0,  # hero: direct detection (step=0, used as fallback when seat6 empty)
-    3: 1,  # left-bottom: 1 step (reliable only for CO hero)
-    2: 3,  # left-top: 3 steps (reliable only for BTN hero)
+    1: 0,  # hero: direct badge (step=0) — used as tiebreaker
+    2: 3,  # left-top
+    3: 1,  # left-bottom
+    5: 4,  # top-right — key for MP detection
+    6: 5,  # bottom-right — most reliable for BTN/CO/BB
 }
 
 POSITION_MARGIN = 10
@@ -104,26 +102,26 @@ class DetectUtils:
     @staticmethod
     def _detect_by_voting(cv2_image) -> Optional[Dict[int, Detection]]:
         """
-        Priority-based hero detection:
+        Voting-based hero detection with dedup and seat1 tiebreak:
 
-        1. Seat 6 (bottom-right, step=5) — MOST RELIABLE.
-           If any badge found here ≥ threshold, deduce hero from it.
-        2. Seat 1 (hero badge direct, step=0) — used when seat6 empty.
-           The hero's own Jurojin badge directly shows their position.
-        3. Supporting seats (3, 2) — confirm or tiebreak.
+        1. Scan seats {1,2,3,5,6} (seat4 excluded — always false positives)
+        2. DEDUP: if same badge at multiple seats, keep highest-score occurrence
+        3. Each surviving badge votes for hero position via SEAT_STEP_MAP
+        4. Winner = candidate with most votes
+        5. TIE → seat1 direct detection wins (badge at seat1 = hero position)
 
-        Empirical reliability:
-          seat6: correct for BTN, CO, BB hero positions
-          seat1: correct for SB, CO; false positive for BTN (→MP) and BB (→SB)
-          seat4: EXCLUDED (always false positives with score ≈1.000)
+        Known reliability:
+          seat6: best for BTN/CO/BB  seat5: key for MP
+          seat1: correct for SB/CO/MP; wrong for BTN(→MP) and BB(→SB)
+          seat4: EXCLUDED (false 1.000 scores always)
         """
         try:
             h, w = cv2_image.shape[:2]
             NO_RECT = (0, 0, 0, 0)
 
-            # Step 1: scan all seats in SEAT_STEP_MAP
-            detections: Dict[int, Detection] = {}
-            for seat, step in SEAT_STEP_MAP.items():
+            # Step 1: detect best badge per seat
+            raw: Dict[int, Detection] = {}
+            for seat in SEAT_STEP_MAP:
                 coords = JUROJIN_POSITION_REGIONS[seat]
                 search_region = coords_to_search_region(
                     coords['x'], coords['y'], coords['w'], coords['h'],
@@ -132,41 +130,44 @@ class DetectUtils:
                 try:
                     matches = TemplateMatchService.find_positions(cv2_image, search_region)
                     if matches and matches[0].name in VALID_POSITIONS:
-                        detections[seat] = matches[0]
-                        badge = matches[0].name
-                        score = matches[0].match_score
-                        implied = SEAT_POSITION_CYCLE[(SEAT_POSITION_CYCLE.index(badge) - step) % 6]
-                        label = "DIRECT" if seat == 1 else f"seat{seat}"
-                        logger.info(f"        [{label}] {badge}({score:.3f}) → implies hero={implied}")
+                        raw[seat] = matches[0]
                 except Exception as e:
                     logger.error(f"❌ Seat {seat} error: {e}")
 
-            if not detections:
+            if not raw:
                 return None
 
-            # Step 2: PRIMARY — seat6 (most reliable)
-            hero_name = None
-            if 6 in detections:
-                det6 = detections[6]
-                badge_idx = SEAT_POSITION_CYCLE.index(det6.name)
-                hero_name = SEAT_POSITION_CYCLE[(badge_idx - 5) % 6]
-                logger.info(f"    → PRIMARY seat6={det6.name}({det6.match_score:.3f}) → hero={hero_name}")
+            # Step 2: DEDUP — per badge name keep only highest-score seat
+            best_for_badge: Dict[str, tuple] = {}
+            for seat, det in raw.items():
+                if det.name not in best_for_badge or det.match_score > best_for_badge[det.name][0]:
+                    best_for_badge[det.name] = (det.match_score, seat, det)
+            deduped: Dict[int, Detection] = {seat: det for _, seat, det in best_for_badge.values()}
 
-            # Step 3: FALLBACK — seat1 direct badge
-            elif 1 in detections:
-                hero_name = detections[1].name  # step=0: badge IS hero position
-                logger.info(f"    → FALLBACK seat1={hero_name}({detections[1].match_score:.3f}) → hero={hero_name}")
+            # Step 3: vote
+            vote_count: Dict[str, int] = {}
+            vote_score: Dict[str, float] = {}
+            for seat, det in deduped.items():
+                step = SEAT_STEP_MAP[seat]
+                implied = SEAT_POSITION_CYCLE[(SEAT_POSITION_CYCLE.index(det.name) - step) % 6]
+                vote_count[implied] = vote_count.get(implied, 0) + 1
+                vote_score[implied] = vote_score.get(implied, 0.0) + det.match_score
+                label = "DIRECT" if seat == 1 else f"seat{seat}"
+                logger.info(f"        [{label}] {det.name}({det.match_score:.3f}) → vote {implied}")
 
-            # Step 4: LAST RESORT — supporting seats (3, 2)
+            # Step 4: winner by most votes
+            max_count = max(vote_count.values())
+            top = [p for p, c in vote_count.items() if c == max_count]
+
+            if len(top) == 1:
+                hero_name = top[0]
+                logger.info(f"    → {hero_name} ({max_count} votes, score={vote_score[hero_name]:.3f})")
+            elif 1 in deduped:
+                hero_name = deduped[1].name   # seat1 step=0: badge IS hero
+                logger.info(f"    → TIE {top} → seat1 tiebreak: {hero_name}")
             else:
-                supporting = {seat: det for seat, det in detections.items() if seat not in (1, 6)}
-                if supporting:
-                    best_seat = max(supporting, key=lambda s: supporting[s].match_score)
-                    det = supporting[best_seat]
-                    step = SEAT_STEP_MAP[best_seat]
-                    badge_idx = SEAT_POSITION_CYCLE.index(det.name)
-                    hero_name = SEAT_POSITION_CYCLE[(badge_idx - step) % 6]
-                    logger.info(f"    → LAST RESORT seat{best_seat}={det.name}({det.match_score:.3f}) → hero={hero_name}")
+                hero_name = max(top, key=lambda p: vote_score[p])
+                logger.info(f"    → TIE {top} → score tiebreak: {hero_name}")
 
             if not hero_name:
                 return None
