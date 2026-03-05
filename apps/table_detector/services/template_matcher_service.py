@@ -1,9 +1,10 @@
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple
 
+import cv2
 import numpy as np
 
 from shared.domain.detection import Detection
@@ -24,6 +25,7 @@ class MatchConfig:
     scale_factors: List[float] = None
     sort_by: str = 'x'  # 'x', 'y', 'score'
     max_workers: int = 4
+    match_method: int = cv2.TM_CCORR_NORMED
 
     def __post_init__(self):
         if self.scale_factors is None:
@@ -56,7 +58,8 @@ class TemplateMatchService:
                     find_single_template_matches,
                     image, template, template_name,
                     config.search_region, config.scale_factors,
-                    config.threshold, config.min_size
+                    config.threshold, config.min_size,
+                    config.match_method
                 )
                 futures.append(future)
 
@@ -109,11 +112,12 @@ class TemplateMatchService:
     def find_positions(image: np.ndarray, search_region: Tuple[float, float, float, float] = None) -> List[Detection]:
         config = MatchConfig(
             search_region=search_region,
-            threshold=0.99,
+            threshold=0.80,
             min_size=10,
-            sort_by='score'
+            sort_by='score',
+            match_method=cv2.TM_CCOEFF_NORMED
         )
-        return TemplateMatchService.find_matches(image, TemplateMatchService.TEMPLATE_REGISTRY.position_templates,
+        return TemplateMatchService.find_matches(image, TemplateMatchService.TEMPLATE_REGISTRY.jurojin_position_templates,
                                                  config)
 
     @staticmethod
