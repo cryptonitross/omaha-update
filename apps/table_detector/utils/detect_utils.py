@@ -104,70 +104,95 @@ class DetectUtils:
     @staticmethod
     def _detect_by_voting(cv2_image) -> Optional[Dict[int, Detection]]:
         """
-        Scan all seats 2-6 for Jurojin badges.
-        Each detected badge implies a hero position via SEAT_STEP_MAP.
-        Most voted hero position wins.
+        Scan all seats (including seat1) for Jurojin badges.
+
+        Algorithm:
+        1. Detect best badge per seat
+        2. DEDUP: if same badge appears at multiple seats, keep only highest-score one
+           (each position can only exist once in the real game)
+        3. Each surviving detection votes for hero position via SEAT_STEP_MAP
+        4. Winner = candidate with most votes
+        5. TIE-BREAK: if tied, trust seat1's direct badge (step=0 → badge = hero pos)
+        6. If seat1 absent and still tied: pick highest score-sum
         """
         try:
             h, w = cv2_image.shape[:2]
             NO_RECT = (0, 0, 0, 0)
 
-            # Collect votes: hero_position → list of (score, seat, badge_name)
-            votes: Dict[str, List[tuple]] = {p: [] for p in VALID_POSITIONS}
-            detected_per_seat: Dict[int, Detection] = {}
-
-            for seat, step in SEAT_STEP_MAP.items():
+            # Step 1: detect best badge per seat
+            raw_detections: Dict[int, Detection] = {}
+            for seat in SEAT_STEP_MAP:
                 coords = JUROJIN_POSITION_REGIONS[seat]
                 search_region = coords_to_search_region(
                     coords['x'], coords['y'], coords['w'], coords['h'],
                     image_width=w, image_height=h
                 )
-
                 try:
                     matches = TemplateMatchService.find_positions(cv2_image, search_region)
-                    if matches:
-                        best = matches[0]
-                        if best.name in VALID_POSITIONS:
-                            detected_per_seat[seat] = best
-                            # Compute implied hero position
-                            badge_idx = SEAT_POSITION_CYCLE.index(best.name)
-                            hero_idx = (badge_idx - step) % 6
-                            implied_hero = SEAT_POSITION_CYCLE[hero_idx]
-                            votes[implied_hero].append((best.match_score, seat, best.name))
-                            label = "DIRECT" if seat == 1 else f"seat{seat}"
-                            logger.info(f"        [{label}] {best.name} (score={best.match_score:.3f}) → vote {implied_hero}")
-                        else:
-                            logger.info(f"        Seat {seat}: NO match")
-                    else:
-                        logger.info(f"        Seat {seat}: NO match")
+                    if matches and matches[0].name in VALID_POSITIONS:
+                        raw_detections[seat] = matches[0]
                 except Exception as e:
                     logger.error(f"❌ Seat {seat} error: {e}")
 
-            if not any(votes[p] for p in VALID_POSITIONS):
+            if not raw_detections:
                 return None
 
-            # Tally votes: sum of scores per candidate hero position
-            tally = {pos: sum(s for s, _, _ in v) for pos, v in votes.items() if v}
-            if not tally:
-                return None
+            # Step 2: DEDUP — per badge name, keep only the seat with highest score
+            best_seat_for_badge: Dict[str, tuple] = {}  # badge_name → (score, seat, Detection)
+            for seat, det in raw_detections.items():
+                name = det.name
+                if name not in best_seat_for_badge or det.match_score > best_seat_for_badge[name][0]:
+                    best_seat_for_badge[name] = (det.match_score, seat, det)
 
-            # Pick winner
-            hero_name = max(tally, key=tally.get)
-            top_score = tally[hero_name]
-            logger.info(f"    Vote tally: {', '.join(f'{k}={v:.2f}' for k,v in sorted(tally.items(), key=lambda x:-x[1]))}")
-            logger.info(f"    → Hero winner: {hero_name} (score_sum={top_score:.3f})")
+            # Rebuild deduped detections: seat → Detection
+            deduped: Dict[int, Detection] = {}
+            for _, (score, seat, det) in best_seat_for_badge.items():
+                deduped[seat] = det
+
+            # Log what survived dedup
+            for seat, det in sorted(deduped.items()):
+                step = SEAT_STEP_MAP[seat]
+                badge_idx = SEAT_POSITION_CYCLE.index(det.name)
+                implied = SEAT_POSITION_CYCLE[(badge_idx - step) % 6]
+                label = "DIRECT" if seat == 1 else f"seat{seat}"
+                logger.info(f"        [{label}] {det.name}({det.match_score:.3f}) → vote {implied}")
+
+            # Step 3: vote — each deduped badge votes for a hero position
+            vote_count: Dict[str, int] = {}
+            vote_score: Dict[str, float] = {}
+            for seat, det in deduped.items():
+                step = SEAT_STEP_MAP[seat]
+                badge_idx = SEAT_POSITION_CYCLE.index(det.name)
+                implied = SEAT_POSITION_CYCLE[(badge_idx - step) % 6]
+                vote_count[implied] = vote_count.get(implied, 0) + 1
+                vote_score[implied] = vote_score.get(implied, 0.0) + det.match_score
+
+            # Step 4: find winner by most votes
+            max_count = max(vote_count.values())
+            top_candidates = [h for h, c in vote_count.items() if c == max_count]
+
+            if len(top_candidates) == 1:
+                hero_name = top_candidates[0]
+                logger.info(f"    → Clear winner: {hero_name} ({max_count} votes, score={vote_score[hero_name]:.3f})")
+            else:
+                # Step 5: TIE — trust seat1 direct detection
+                if 1 in deduped and deduped[1].name in VALID_POSITIONS:
+                    hero_name = deduped[1].name  # seat1 step=0: badge IS hero position
+                    logger.info(f"    → TIE {top_candidates} → seat1 tiebreak: {hero_name}")
+                else:
+                    # Fallback: highest score sum among tied candidates
+                    hero_name = max(top_candidates, key=lambda h: vote_score[h])
+                    logger.info(f"    → TIE {top_candidates} → score tiebreak: {hero_name}")
 
             # Build full positions dict
             player_positions = {1: Detection(hero_name, None, NO_RECT, 1.0)}
             hero_idx = SEAT_POSITION_CYCLE.index(hero_name)
-
             for seat, step in SEAT_STEP_MAP.items():
-                if seat in detected_per_seat:
-                    player_positions[seat] = detected_per_seat[seat]
+                if seat in deduped:
+                    player_positions[seat] = deduped[seat]
                 else:
                     expected_idx = (hero_idx + step) % 6
-                    expected_name = SEAT_POSITION_CYCLE[expected_idx]
-                    player_positions[seat] = Detection(expected_name, None, NO_RECT, 0)
+                    player_positions[seat] = Detection(SEAT_POSITION_CYCLE[expected_idx], None, NO_RECT, 0)
 
             return player_positions
 
