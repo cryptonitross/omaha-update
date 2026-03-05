@@ -112,7 +112,7 @@ class TemplateMatchService:
     def find_positions(image: np.ndarray, search_region: Tuple[float, float, float, float] = None) -> List[Detection]:
         config = MatchConfig(
             search_region=search_region,
-            threshold=0.80,
+            threshold=0.70,
             min_size=10,
             sort_by='score',
             match_method=cv2.TM_CCOEFF_NORMED

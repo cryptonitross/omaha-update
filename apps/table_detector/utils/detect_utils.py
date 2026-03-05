@@ -123,7 +123,7 @@ class DetectUtils:
             real = [(s, d) for s, d in player_positions.items() if d.name in VALID_POSITIONS]
             real_count = len(real)
 
-            if real_count < 2:
+            if real_count < 1:
                 logger.info(f"    ⚠️ Jurojin: only {real_count} positions detected, skipping")
                 return None
 
