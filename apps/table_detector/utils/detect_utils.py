@@ -171,10 +171,11 @@ class DetectUtils:
             if not hero_name:
                 return None
 
-            # Build full positions dict
-            player_positions = {1: Detection(hero_name, None, NO_RECT, 1.0)}
+            # Build FULL positions dict (all 6 seats required by PositionService)
             hero_idx = SEAT_POSITION_CYCLE.index(hero_name)
-            for seat, step in SEAT_STEP_MAP.items():
+            ALL_SEAT_STEPS = {1: 0, 2: 3, 3: 1, 4: 2, 5: 4, 6: 5}
+            player_positions = {}
+            for seat, step in ALL_SEAT_STEPS.items():
                 if seat in detections:
                     player_positions[seat] = detections[seat]
                 else:
