@@ -88,15 +88,31 @@ class DetectUtils:
     def _detect_jurojin_positions(cv2_image) -> Optional[Dict[int, Detection]]:
         """
         Detect positions from Jurojin overlay colored circle badges via template matching.
-        Hero (seat 1) is skipped and deduced from other detected seats.
-        Returns None if detection is unreliable (not enough seats or duplicates).
+        Hero (seat 1) is always at bottom center — check it directly first.
+        If hero badge not found, deduce from other seats.
+        Returns None if no positions detected at all.
         """
         try:
             h, w = cv2_image.shape[:2]
             NO_RECT = (0, 0, 0, 0)
             player_positions = {}
 
-            # Detect seats 2-6 (skip seat 1 / hero)
+            # PRIMARY: check hero badge directly at seat 1 (always bottom center)
+            hero_coords = JUROJIN_POSITION_REGIONS[1]
+            hero_region = coords_to_search_region(
+                hero_coords['x'], hero_coords['y'], hero_coords['w'], hero_coords['h'],
+                image_width=w, image_height=h
+            )
+            hero_detected = TemplateMatchService.find_positions(cv2_image, hero_region)
+            if hero_detected:
+                best = hero_detected[0]
+                player_positions[1] = best
+                logger.info(f"        Seat 1 (HERO): {best.name} (score={best.match_score:.3f}) ✅ direct")
+            else:
+                player_positions[1] = Detection("NO", (0, 0), NO_RECT, 0)
+                logger.info(f"        Seat 1 (HERO): NO match")
+
+            # SECONDARY: detect seats 2-6 for additional context / deduction
             for seat in range(2, 7):
                 coords = JUROJIN_POSITION_REGIONS[seat]
                 search_region = coords_to_search_region(
@@ -108,7 +124,7 @@ class DetectUtils:
                     detected = TemplateMatchService.find_positions(cv2_image, search_region)
 
                     if detected:
-                        best = detected[0]  # sorted by score (highest first)
+                        best = detected[0]
                         player_positions[seat] = best
                         logger.info(f"        Seat {seat}: {best.name} (score={best.match_score:.3f})")
                     else:
@@ -135,13 +151,14 @@ class DetectUtils:
                 logger.warning(f"    ⚠️ Jurojin: duplicate positions {dupes} — overlay likely absent")
                 return None
 
-            # Deduce hero position from detected seats
-            hero_name = DetectUtils._deduce_hero(player_positions)
-            if hero_name:
-                player_positions[1] = Detection(hero_name, None, NO_RECT, 1.0)
-                logger.info(f"    Hero deduced: {hero_name}")
-            else:
-                player_positions[1] = Detection("NO", (0, 0), NO_RECT, 0)
+            # If hero position not found directly, deduce from other seats
+            if player_positions[1].name == "NO":
+                hero_name = DetectUtils._deduce_hero(
+                    {s: d for s, d in player_positions.items() if s != 1}
+                )
+                if hero_name:
+                    player_positions[1] = Detection(hero_name, None, NO_RECT, 1.0)
+                    logger.info(f"    Hero deduced: {hero_name}")
 
             logger.info(f"    🎯 Using Jurojin overlay positions ({real_count} detected)")
             return player_positions
