@@ -36,13 +36,14 @@ PLAYER_POSITIONS = {
 
 # Jurojin badge search regions per seat (wider to catch badge placement variations)
 # NOTE: seat 2 = left-top, seat 3 = left-bottom (matches original working code)
+# Seat 1 (hero) region is wide to ensure we catch the badge wherever it appears
 JUROJIN_POSITION_REGIONS = {
-    1: {'x': 280, 'y': 355, 'w': 65, 'h': 65},  # hero bottom center
-    2: {'x': 15,  'y': 150, 'w': 70, 'h': 70},  # left top
-    3: {'x': 15,  'y': 310, 'w': 70, 'h': 70},  # left bottom
-    4: {'x': 275, 'y': 100, 'w': 65, 'h': 65},  # top center
-    5: {'x': 540, 'y': 145, 'w': 65, 'h': 65},  # top right
-    6: {'x': 555, 'y': 330, 'w': 70, 'h': 70},  # bottom right
+    1: {'x': 180, 'y': 300, 'w': 220, 'h': 180},  # hero bottom center — WIDE region
+    2: {'x': 15,  'y': 150, 'w': 70,  'h': 70},   # left top
+    3: {'x': 15,  'y': 310, 'w': 70,  'h': 70},   # left bottom
+    4: {'x': 275, 'y': 100, 'w': 65,  'h': 65},   # top center
+    5: {'x': 540, 'y': 145, 'w': 65,  'h': 65},   # top right
+    6: {'x': 555, 'y': 330, 'w': 70,  'h': 70},   # bottom right
 }
 
 POSITION_MARGIN = 10
