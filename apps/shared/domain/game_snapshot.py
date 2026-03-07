@@ -17,7 +17,9 @@ class GameSnapshot:
             bids: Optional[List[Any]] = None,
             is_player_move: bool = False,
             actions: Optional[Dict[int, List[Detection]]] = None,
-            moves: Optional[Dict[Street, List[Tuple[Position, MoveType]]]] = None
+            moves: Optional[Dict[Street, List[Tuple[Position, MoveType]]]] = None,
+            hero_position: Optional[str] = None,
+            rfi_action: Optional[str] = None
     ):
         self.player_cards = player_cards or []
         self.table_cards = table_cards or []
@@ -26,6 +28,8 @@ class GameSnapshot:
         self.is_player_move = is_player_move
         self.actions = actions or {}
         self.moves = moves or defaultdict(list)
+        self.hero_position = hero_position
+        self.rfi_action = rfi_action
 
     @property
     def has_cards(self) -> bool:
@@ -101,7 +105,9 @@ class GameSnapshot:
                 ],
                 'moves': self._format_moves_for_protocol(),
                 'street': self.get_street_display(),
-                'solver_link': FlopHeroLinkService.generate_link(self)
+                'solver_link': FlopHeroLinkService.generate_link(self),
+                'hero_position': self.hero_position,
+                'rfi_action': self.rfi_action
             },
             detection_interval=detection_interval
         )

@@ -139,3 +139,8 @@ artifacts
 
 /apps/table_detector/resources/*
 !/apps/table_detector/resources/templates/
+
+# Large data & debug folders (do not push)
+/resources/
+/debug_captures/
+.venv/

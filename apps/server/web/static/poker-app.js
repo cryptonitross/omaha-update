@@ -58,15 +58,32 @@ function detectChanges(newDetections) {
     return newStr !== prevStr;
 }
 
+function createHeroBadges(detection) {
+    let badges = '';
+    console.log('Hero detection data:', JSON.stringify({pos: detection.hero_position, rfi: detection.rfi_action}));
+    if (detection.hero_position && detection.hero_position !== 'NO') {
+        badges += `<span class="hero-position-badge">${detection.hero_position}</span>`;
+        if (detection.rfi_action) {
+            const actionClass = detection.rfi_action === 'RAISE' ? 'rfi-raise' : 'rfi-fold';
+            badges += `<span class="rfi-action-badge ${actionClass}">${detection.rfi_action}</span>`;
+        }
+    } else {
+        badges += `<span class="hero-position-badge" style="background:#666;">--</span>`;
+    }
+    return badges;
+}
+
 function createPlayerCardsSection(detection, isUpdate) {
     const cardsClass = isUpdate ? 'cards-block new-cards' : 'cards-block';
+    const heroBadges = createHeroBadges(detection);
 
     if (detection.player_cards && detection.player_cards.length > 0) {
         const cardsHtml = detection.player_cards.map(card =>
             `<div class="card ${getSuitColor(card.display)}">${card.display}</div>`
         ).join('');
 
-        return `<div class="${cardsClass}" onclick="copyToClipboard('${detection.player_cards_string}')">${cardsHtml}</div>`;
+        return `<div class="${cardsClass}" onclick="copyToClipboard('${detection.player_cards_string}')">${cardsHtml}</div>
+                <div class="hero-badges-row">${heroBadges}</div>`;
     }
 
     return '<div class="no-cards">No cards detected</div>';

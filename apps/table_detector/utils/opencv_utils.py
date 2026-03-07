@@ -80,7 +80,8 @@ def match_template_at_scale(
         template_h: int,
         offset: Tuple[int, int],
         match_threshold: float = 0.955,
-        min_card_size: int = 5
+        min_card_size: int = 5,
+        match_method: int = cv2.TM_CCORR_NORMED
 ) -> List[Dict]:
     """
     Perform template matching at a specific scale
@@ -95,6 +96,7 @@ def match_template_at_scale(
         offset: (x, y) offset of search region
         match_threshold: Minimum match score to consider
         min_card_size: Minimum card size in pixels
+        match_method: OpenCV template matching method
 
     Returns:
         List of detection dictionaries
@@ -111,7 +113,7 @@ def match_template_at_scale(
     scaled_template = cv2.resize(template, (scaled_w, scaled_h))
 
     # Perform template matching
-    result = cv2.matchTemplate(search_image, scaled_template, cv2.TM_CCORR_NORMED)
+    result = cv2.matchTemplate(search_image, scaled_template, match_method)
 
     # Find all locations where match is above threshold
     locations = np.where(result >= match_threshold)

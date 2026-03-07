@@ -4,6 +4,8 @@ from typing import List, Tuple, Dict
 import numpy as np
 from loguru import logger
 
+import cv2
+
 from table_detector.utils.opencv_utils import match_template_at_scale
 
 
@@ -14,7 +16,8 @@ def find_template_matches_parallel(
         scale_factors: List[float] = None,
         match_threshold: float = 0.955,
         min_card_size: int = 20,
-        max_workers: int = 4
+        max_workers: int = 4,
+        match_method: int = cv2.TM_CCORR_NORMED
 ) -> List[Dict]:
     """
     Find matches for all templates in the image using parallel execution
@@ -62,7 +65,8 @@ def find_single_template_matches(
         search_region: Tuple[float, float, float, float] = None,
         scale_factors: List[float] = None,
         match_threshold: float = 0.955,
-        min_card_size: int = 20
+        min_card_size: int = 20,
+        match_method: int = cv2.TM_CCORR_NORMED
 ) -> List[Dict]:
     if scale_factors is None:
         scale_factors = [1.0]
@@ -75,7 +79,8 @@ def find_single_template_matches(
         for scale in scale_factors:
             scale_detections = match_template_at_scale(
                 search_image, template, template_name, scale,
-                template_w, template_h, offset, match_threshold, min_card_size
+                template_w, template_h, offset, match_threshold, min_card_size,
+                match_method
             )
             detections.extend(scale_detections)
 

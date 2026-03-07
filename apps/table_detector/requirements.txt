@@ -7,7 +7,7 @@ pytesseract==0.3.13
 opencv-python==4.11.0.86
 
 # Task scheduling for detection intervals
-apscheduler==3.10.4
+APScheduler==3.11.1
 
 # Plotting and visualization (for testing/debugging)
 matplotlib==3.10.3

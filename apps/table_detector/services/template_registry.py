@@ -17,6 +17,8 @@ class TemplateRegistry:
         self._position_templates: Optional[Dict[str, np.ndarray]] = None
         self._actions_templates: Optional[Dict[str, np.ndarray]] = None
         self._jurojin_action_templates: Optional[Dict[str, np.ndarray]] = None
+        self._jurojin_position_templates: Optional[Dict[str, np.ndarray]] = None
+        self._jurojin_inner_templates: Optional[Dict[str, np.ndarray]] = None
 
         self._templates_dir = Path(project_root) / "apps" / "table_detector" / "resources" / "templates" / country
 
@@ -80,6 +82,18 @@ class TemplateRegistry:
         except Exception as e:
             logger.error(f"❌ Error loading {category} templates: {str(e)}")
             return {}
+
+    @property
+    def jurojin_position_templates(self) -> Dict[str, np.ndarray]:
+        if self._jurojin_position_templates is None:
+            self._jurojin_position_templates = self._load_template_category("jurojin_positions")
+        return self._jurojin_position_templates
+
+    @property
+    def jurojin_inner_templates(self) -> Dict[str, np.ndarray]:
+        if self._jurojin_inner_templates is None:
+            self._jurojin_inner_templates = self._load_template_category("jurojin_inner")
+        return self._jurojin_inner_templates
 
     def has_position_templates(self) -> bool:
         return bool(self.position_templates)

@@ -15,8 +15,10 @@ def format_game_data_for_web(game_data: Dict[str, Any]) -> Dict[str, Any]:
         'moves': game_data.get('moves', []),
         'street': game_data.get('street', 'unknown'),
         'solver_link': game_data.get('solver_link'),
+        'hero_position': game_data.get('hero_position'),
+        'rfi_action': game_data.get('rfi_action'),
         'last_update': game_data.get('last_update', datetime.now().isoformat()),
-        'detection_interval': game_data.get('detection_interval', 3)  # Include client detection interval
+        'detection_interval': game_data.get('detection_interval', 3)
     }
 
 
